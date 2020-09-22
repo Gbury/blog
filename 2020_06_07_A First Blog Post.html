@@ -1,0 +1,50 @@
+## -*- coding: utf-8 -*-
+<%namespace name="code" module="code"/>
+
+<p>
+So, first blog post I have ever written, let's see how this goes, ^^
+</p>
+
+<p>
+Of course, I spent most of my time setting up the server to correctly index and
+serve the blog posts so that in the future I'll only have to write the blog post
+in itself, upload the file, and the server will do the rest (lookup the date, add
+the post to the db, and correctly generate the index for all the posts). So this
+will be very short, more of a statement that I can write blog posts now, rather
+than a real blog post with content, :p
+</p>
+
+<p>
+Actually, the thing which probably took me most of the time, was to somehow get
+automatic syntax colouring, and after a few hours getting lost in some documentation,
+I finally found a way to do so, so that I can have in my hand-written blog post
+something like:
+<pre>
+  <\%code:ocaml>
+    let foobar () = function
+      | `Bla -> 42
+      | `Foo -> 0
+  <\/%code:ocaml>
+</pre>
+
+and it would automatically render as follows:
+
+<%code:ocaml>
+  let foobar () = function
+    | `Bla -> 42
+    | `Foo -> 0
+</%code:ocaml>
+
+Of course, the html code is without the backslashes, but interestingly,
+my setup does not seem to allow escaping so that I can't really have the exact html
+code printed as html because it will be caught by the template framework and
+automatically formatted, but I guess it won't be a real problem unless I decide to
+write a blog post about how I setup my blog, but that would be too meta.
+</p>
+
+<p>
+So it's late now, and I'm pretty happy, but I still wonder if I'll ever truly
+have the time and motivation to write blog posts, so that the last few hours
+won't be lost, ^^
+</p>
+
