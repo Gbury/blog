@@ -1,0 +1,4 @@
+A first post in a serie of posts about the optimizing process of Dolmen. This post
+talks about the optimization of memory used to represent source locations in the
+untyped AST of Dolmen.
+
