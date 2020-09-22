@@ -1,13 +1,167 @@
 ## -*- coding: utf-8 -*-
 <%namespace name="code" module="code"/>
 
-<h3>Introduction</h3>
+WARNING: writing still in progress, ^^
 
 <p>
 This is a the first blog post in what I hope will be a series of posts that
-detail the process I went through while optimizing
-<a href="https://github.com/Gbury/dolmen">Dolmen</a>, which is a parsing
-and typechecking library for languages used in automated deduction that I wrote
-in <a href="https://ocaml.org/">OCaml</a>.
-
+detail the process I went through while optimizing <a
+href="https://github.com/Gbury/dolmen">Dolmen</a>, which is a parsing and
+typechecking library for languages used in automated deduction that I wrote in
+<a href="https://ocaml.org/">OCaml</a>.
 </p>
+
+<h3>Introduction</h3>
+
+<p>
+Dolmen is a parsing and typechecking library for automated used in automated
+deduction. From a runtime point of view, this makes it quite simple actually,
+since it perform the following tasks:
+<ul>
+  <li>Read the input</li>
+  <li>Construct an untyped AST that represents the input (or raise an error)</li>
+  <li>If typechecking is enabled, perform a traversal of the untyped AST in order
+    to produce a typed AST (or raise an error).</li>
+</ul>
+</p>
+
+<p>
+Of course, most of the complexity of the current codebase of Dolmen comes from
+two things:
+<ul>
+  <li>Error raising: particularly in the typechecker, about half the code relates
+    to correct error handling (catching erroneous application arities, argument
+    type mismatch, type inference, etc...)</li>
+  <li>Functorised design: to encourage ease of adoption, the code of Dolmen is very
+    heavily functorised; in fact, Dolmen does not directly provide parsers, but
+    rather functors that produce parser. This allows users to provide their own
+    implementation of an AST (with the corresponding creation functions), and then
+    Dolmen will generate a parser than generate this AST directly (thus helping
+    existing projects to switch to Dolmen with minimal changes).</li>
+</ul>
+</p>
+
+<p>
+That being said, in today's post, we'll talk a bit about a part of how I
+optimized dolmen, particularly the memory usage of Dolmen, and even more
+specifically, how changin the representation of locations can have a big impact
+on memory usage.
+</p>
+
+
+<h3>Memory usage and locations<h3>
+
+<p>
+This post will focus on how to optimize/reduce memory usage. This assumes that
+one has already pinpointed some structure (in this case, memory locations), as a
+potential point of interest to optimize. In the case of dolmen it is rather
+simple: if we disable typechecking and run dolmen, all it does is construct an
+AST from the input, hence almost all of the memory is used by the AST, so it is
+the only point to optimize.
+</p>
+
+<p>
+Now, let's see what we're talking about. Before optimization, the Dolmen AST looked
+like this:
+
+<%code:ocaml>
+(* The type of source file locations *)
+type location = {
+  file : string;
+  start_line : int;
+  start_column : int;
+  stop_line : int;
+  stop_column : int;
+}
+
+(* The type of identifiers for variables, symbols, etc..
+   along with namespaces to differentiate identifiers that share the
+   same name, but are semantically distinct (e.g. the same name could
+   be used in terms and types but refer to different things). *)
+type namespace =
+  | Var
+  | Type
+  | Term
+
+type id = {
+  ns : namespace;
+  name : string;
+}
+
+(* The type of builtin operators.
+   In practice, there are a lot more builtins, but it's not really
+   relevant or useful for what we're talking about here. *)
+type builtin =
+  | True | False
+  | And | Or | Not
+
+(* The type of binders, again a bit simplified. *)
+type binder =
+  | Forall | Exists
+
+(* The description of a term, i.e. whether it is a symbol, a builtin,
+   an application, and so on... *)
+type descr =
+  | Symbol of Id.t
+  | Builtin of builtin
+  | Colon of t * t
+  | App of t * t list
+  | Binder of binder * t list * t
+  | Match of t * (t * t) list
+
+(* Terms descriptors are wrapped in a record to record some metadata
+   that are common to all terms, such as attributes (to represent source file
+   annotations on terms), and source file location. *)
+and t = {
+  term : descr;
+  attr : t list;
+  loc : location option;
+}
+</%code:ocaml>
+</p>
+
+<p>
+So, now that we have the type definition for ASTs, let's take a look at how the
+terms are repreented in memory. First let's define some terms; we'll start with
+defining some terms to represent the "True", and "False" constants, and a term
+for the conjunction of the two.
+
+<%code:ocaml>
+(* Some code to help with creating locations *)
+let loc_file = "example.dummy"
+let mk_loc line col n = {
+  file = loc_file;
+  start_line = line;
+  start_column = col;
+  stop_line = line;
+  stop_column = col + n;
+}
+
+(* A helper function to create terms *)
+let mk ?loc term = { term; loc; attr = []; }
+
+(* A few simple terms. We'll iamgine that they come from
+   some imaginary input with 1 line where the first character is
+   the constant "true", the third charater is the constant "false";
+   between the two of them is the symbol for conjunction (so at
+   charcater number 2), so that the term for the whole conjunction
+   covers charcaters 1 to 3. *)
+let true_ = mk ~loc:(mk_loc 1 1 1) (Builtin True)
+let false_ = mk ~loc:(mk_loc 1 3 1) (Builtin False)
+let and_ = mk ~loc:(mk_loc 1 2 1) (Builtin And)
+let conjunction = mk ~loc:(mk_loc 1 1 3) (App (and_, [true_; false_]))
+</%code:ocaml>
+</p>
+
+<p>
+Experiende readers might have already seen this from the type definitions, but
+the locations really take up a lot of the size of terms. To help with
+understanding why, we'll use a small tool I wrote that helps visualize how an ocaml
+value is represented: <a href="https://github.com/Gbury/ocaml-memgraph">memgraph</a>.
+With memgraph, we can see how the constant "true_" is represented.
+</p>
+
+<img src="https://github.com/Gbury/ocaml-memgraph/blob/master/examples/ast/true/example.svg"
+     alt="Visual representation of the memory layout of true_">
+
+
